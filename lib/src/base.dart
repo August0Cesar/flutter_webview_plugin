@@ -362,7 +362,11 @@ class WebViewStateChanged {
         throw UnimplementedError(
             'WebViewState type "${map['type']}" is not supported.');
     }
-    return WebViewStateChanged(t, map['url'], map['navigationType']);
+    int navigationType = -1;
+    if (map.containsKey('navigationType')) {
+      navigationType = map['navigationType'];
+    }
+    return WebViewStateChanged(t, map['url'], navigationType);
   }
 
   final WebViewState type;
