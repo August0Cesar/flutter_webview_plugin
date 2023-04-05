@@ -1,5 +1,6 @@
 #import "FlutterWebviewPlugin.h"
 #import "WebviewJavaScriptChannelHandler.h"
+//#import "SWKURLSchemeHandler.h" CustomHandler
 
 static NSString *const CHANNEL_NAME = @"flutter_webview_plugin";
 
@@ -105,11 +106,10 @@ static NSString *const CHANNEL_NAME = @"flutter_webview_plugin";
         [self registerJavaScriptChannels:_javaScriptChannelNames controller:userContentController];
     }
 
-    if (clearCache != (id)[NSNull null] && [clearCache boolValue]) {
-        [[NSURLCache sharedURLCache] removeAllCachedResponses];
-        [self cleanCache:result];
-
-    }
+     if (clearCache != (id)[NSNull null] && [clearCache boolValue]) {
+         [[NSURLCache sharedURLCache] removeAllCachedResponses];
+//         [self cleanCache:result];
+     }
 
     if (clearCookies != (id)[NSNull null] && [clearCookies boolValue]) {
         NSHTTPCookieStorage *storage = [NSHTTPCookieStorage sharedHTTPCookieStorage];
@@ -121,7 +121,7 @@ static NSString *const CHANNEL_NAME = @"flutter_webview_plugin";
         [self cleanCookies:result];
 
     }
-
+    
     if (userAgent != (id)[NSNull null]) {
         [[NSUserDefaults standardUserDefaults] registerDefaults:@{@"UserAgent": userAgent}];
     }
@@ -132,9 +132,16 @@ static NSString *const CHANNEL_NAME = @"flutter_webview_plugin";
     } else {
         rc = self.viewController.view.bounds;
     }
-
+    
     WKWebViewConfiguration* configuration = [[WKWebViewConfiguration alloc] init];
     configuration.userContentController = userContentController;
+    
+    //Teste CustomHandler
+//      SWKURLSchemeHandler *sWKURLSchemeHandler = [[SWKURLSchemeHandler alloc] init];
+//      [configuration setURLSchemeHandler:sWKURLSchemeHandler forURLScheme:@"mycustomurl"];
+    //Test CustomHandler
+
+    
     self.webview = [[WKWebView alloc] initWithFrame:rc configuration:configuration];
     self.webview.UIDelegate = self;
     self.webview.navigationDelegate = self;
@@ -158,6 +165,29 @@ static NSString *const CHANNEL_NAME = @"flutter_webview_plugin";
     UIViewController* currentViewController = presentedViewController != nil ? presentedViewController : self.viewController;
     [currentViewController.view addSubview:self.webview];
 
+//    Clean cache before to open app
+    NSLog(@"SD/ Apagando cache ao abri o app.");
+    WKWebsiteDataStore* dataStore = [WKWebsiteDataStore defaultDataStore];
+    NSMutableArray *wKWebsiteDataTypeCacheArray = [NSMutableArray arrayWithObjects:WKWebsiteDataTypeMemoryCache, WKWebsiteDataTypeDiskCache, nil];
+    NSSet<NSString *> *websiteDataTypes = [NSSet setWithArray:wKWebsiteDataTypeCacheArray];
+    void (^deleteCache)(NSArray<WKWebsiteDataRecord *> *) =
+        ^(NSArray<WKWebsiteDataRecord *> *currentCache) {
+        [dataStore removeDataOfTypes:websiteDataTypes
+                    forDataRecords:currentCache
+                    completionHandler:^{
+                    result(nil);
+                    }];
+    };
+    [dataStore fetchDataRecordsOfTypes:websiteDataTypes completionHandler:deleteCache];//deleta o cache do diso
+
+
+//    NSLog(@"SD/ Tamanho cache diskCapacity %@", [NSString stringWithFormat:@"%li", myNSURLCache.diskCapacity]);
+//    NSLog(@"SD/ Tamanho cache currentDiskUsage %@", [NSString stringWithFormat:@"%li", myNSURLCache.currentDiskUsage]);
+//    NSLog(@"SD/ Tamanho cache memoryCapacity %@", [NSString stringWithFormat:@"%li", myNSURLCache.memoryCapacity]);
+//    NSLog(@"SD/ Tamanho cache currentMemoryUsage %@", [NSString stringWithFormat:@"%li", myNSURLCache.currentMemoryUsage]);
+//    Clean cache before open app
+    
+    
     [self navigate:call];
 }
 
@@ -210,7 +240,7 @@ static NSString *const CHANNEL_NAME = @"flutter_webview_plugin";
                     @throw @"not available on version earlier than ios 9.0";
                 }
             } else {
-                NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:url]];
+                NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:url] cachePolicy:NSURLRequestUseProtocolCachePolicy timeoutInterval:180];
                 NSDictionary *headers = call.arguments[@"headers"];
 
                 if (headers != nil) {
@@ -266,8 +296,9 @@ static NSString *const CHANNEL_NAME = @"flutter_webview_plugin";
 
 - (void)reloadUrl:(FlutterMethodCall*)call {
     if (self.webview != nil) {
-		NSString *url = call.arguments[@"url"];
-		NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:url]];
+        NSString *url = call.arguments[@"url"];
+		NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:url]
+                                                               cachePolicy:NSURLRequestUseProtocolCachePolicy timeoutInterval:180];
         NSDictionary *headers = call.arguments[@"headers"];
         
         if (headers != nil) {
@@ -306,14 +337,14 @@ static NSString *const CHANNEL_NAME = @"flutter_webview_plugin";
 - (void)cleanCache:(FlutterResult)result {
     if (self.webview != nil) {
        if (@available(iOS 9.0, *)) {
-          NSSet* cacheDataTypes = [WKWebsiteDataStore allWebsiteDataTypes];
-          WKWebsiteDataStore* dataStore = [WKWebsiteDataStore defaultDataStore];
-          NSDate* dateFrom = [NSDate dateWithTimeIntervalSince1970:0];
-          [dataStore removeDataOfTypes:cacheDataTypes
-                         modifiedSince:dateFrom
-                     completionHandler:^{
-              result(nil);
-                     }];
+            NSSet* cacheDataTypes = [WKWebsiteDataStore allWebsiteDataTypes];
+            WKWebsiteDataStore* dataStore = [WKWebsiteDataStore defaultDataStore];
+            NSDate* dateFrom = [NSDate dateWithTimeIntervalSince1970:0];
+            [dataStore removeDataOfTypes:cacheDataTypes
+                            modifiedSince:dateFrom
+                        completionHandler:^{
+                result(nil);
+                        }];
         } else {
           // support for iOS8 tracked in https://github.com/flutter/flutter/issues/27624.
           NSLog(@"Clearing cache is not supported for Flutter WebViews prior to iOS 9.");
@@ -428,26 +459,30 @@ static NSString *const CHANNEL_NAME = @"flutter_webview_plugin";
     [channel invokeMethod:@"onState" arguments:@{@"type": @"startLoad", @"url": webView.URL.absoluteString}];
 }
 
+//Lida com erros antes de fazer a requisicao geralmente erros com a conectividade
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
     NSString* url = webView.URL == nil ? @"?" : webView.URL.absoluteString;
     
-    [channel invokeMethod:@"onHttpError" arguments:@{@"code": [NSString stringWithFormat:@"%ld", error.code], @"url": url}];
+    NSString *appError = [NSString stringWithFormat:@"Error ao iniciar carregamento carregar url %@", error];
+    [channel invokeMethod:@"onHttpError" arguments:@{@"code": [NSString stringWithFormat:@"%ld", error.code], @"url": url, @"message": appError}];
+}
+
+//Lida com erros durante a requisicao
+- (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    NSString *appError = [NSString stringWithFormat:@"Error durante a navegacao url %@", error];    
+    [channel invokeMethod:@"onHttpError" arguments:@{@"code": [NSString stringWithFormat:@"%ld", error.code], @"error": error.localizedDescription, @"message": appError}];
 }
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
     [channel invokeMethod:@"onState" arguments:@{@"type": @"finishLoad", @"url": webView.URL.absoluteString}];
 }
 
-- (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
-    [channel invokeMethod:@"onHttpError" arguments:@{@"code": [NSString stringWithFormat:@"%ld", error.code], @"error": error.localizedDescription}];
-}
-
 - (void)webView:(WKWebView *)webView decidePolicyForNavigationResponse:(WKNavigationResponse *)navigationResponse decisionHandler:(void (^)(WKNavigationResponsePolicy))decisionHandler {
     if ([navigationResponse.response isKindOfClass:[NSHTTPURLResponse class]]) {
         NSHTTPURLResponse * response = (NSHTTPURLResponse *)navigationResponse.response;
-
+        
         if (response.statusCode >= 400) {
-            [channel invokeMethod:@"onHttpError" arguments:@{@"code": [NSString stringWithFormat:@"%ld", response.statusCode], @"url": webView.URL.absoluteString}];
+            [channel invokeMethod:@"onHttpError" arguments:@{@"code": [NSString stringWithFormat:@"%ld", response.statusCode], @"url": webView.URL.absoluteString, @"message": @"Error do lado do servidor."}];
         }
     }
     decisionHandler(WKNavigationResponsePolicyAllow);

@@ -74,8 +74,8 @@ class FlutterWebviewPlugin {
         );
         break;
       case 'onHttpError':
-        _onHttpError.add(
-            WebViewHttpError(call.arguments['code'], call.arguments['url']));
+        _onHttpError.add(WebViewHttpError(call.arguments['code'],
+            call.arguments['url'], call.arguments['message']));
         break;
       case 'javascriptChannelMessage':
         _handleJavascriptChannelMessage(
@@ -375,8 +375,9 @@ class WebViewStateChanged {
 }
 
 class WebViewHttpError {
-  WebViewHttpError(this.code, this.url);
+  WebViewHttpError(this.code, this.url, this.message);
 
   final String url;
   final String code;
+  final String message;
 }
